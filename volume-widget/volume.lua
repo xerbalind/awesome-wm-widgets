@@ -14,10 +14,12 @@ local gears = require("gears")
 local beautiful = require("beautiful")
 local watch = require("awful.widget.watch")
 local utils = require("awesome-wm-widgets.volume-widget.utils")
+local naughty = require("naughty")
 
 
 local LIST_DEVICES_CMD = [[sh -c "pacmd list-sinks; pacmd list-sources"]]
 local function GET_VOLUME_CMD(device) return 'amixer -D ' .. device .. ' sget Master' end
+local function SET_VOLUME_CMD(device,value) return 'amixer -D ' .. device .. ' sset Master ' .. value .. '%' end
 local function INC_VOLUME_CMD(device, step) return 'amixer -D ' .. device .. ' sset Master ' .. step .. '%+' end
 local function DEC_VOLUME_CMD(device, step) return 'amixer -D ' .. device .. ' sset Master ' .. step .. '%-' end
 local function TOG_VOLUME_CMD(device) return 'amixer -D ' .. device .. ' sset Master toggle' end
@@ -34,16 +36,12 @@ local volume = {}
 
 local rows  = { layout = wibox.layout.fixed.vertical }
 
-local popup = awful.popup{
-    bg = beautiful.bg_normal,
-    ontop = true,
-    visible = false,
-    shape = gears.shape.rounded_rect,
-    border_width = 1,
-    border_color = beautiful.bg_focus,
+volume.widget = wibox.widget {
     maximum_width = 400,
-    offset = { y = 5 },
-    widget = {}
+    bg = beautiful.bg_normal,
+    widget =  wibox.container.background,
+    border_color = beautiful.bg_focus,
+    border_width = 1
 }
 
 local function build_main_line(device)
@@ -65,7 +63,7 @@ local function build_rows(devices, on_checkbox_click, device_type)
             shape = gears.shape.circle,
             forced_width = 20,
             forced_height = 20,
-            check_color = beautiful.fg_urgent,
+            check_color = beautiful.blue,
             widget = wibox.widget.checkbox
         }
 
@@ -142,20 +140,37 @@ local function build_header_row(text)
     }
 end
 
-local function rebuild_popup()
-    spawn.easy_async(LIST_DEVICES_CMD, function(stdout)
+local function build_slider(on_value_change,value)
+  local slider = wibox.widget {
+    bar_height = 5,
+    handle_color = beautiful.blue or beautiful.fg_normal,
+    handle_shape = gears.shape.losange,
+    handle_width = 15,
+    bar_shape    = gears.shape.rounded_rect,
+    handle_border_color = beautiful.border_color,
+    value = value,
+    minimum = 0,
+    maximum = 100,
+    widget = wibox.widget.slider,
+    forced_height = 25,
+    forced_width = 100,
+    opacity = 0.9
+  }
 
-        local sinks, sources = utils.extract_sinks_and_sources(stdout)
+  slider:connect_signal("property::value", function()
+    on_value_change(slider.value)
+  end)
 
-        for i = 0, #rows do rows[i]=nil end
+  slider:connect_signal("mouse::enter",function()
+    slider.opacity = 1
+  end)
 
-        table.insert(rows, build_header_row("SINKS"))
-        table.insert(rows, build_rows(sinks, function() rebuild_popup() end, "sink"))
-        table.insert(rows, build_header_row("SOURCES"))
-        table.insert(rows, build_rows(sources, function() rebuild_popup() end, "source"))
+  slider:connect_signal("mouse::leave",function()
+    slider.opacity = 0.9
+  end)
 
-        popup:setup(rows)
-    end)
+
+  return slider
 end
 
 
@@ -163,38 +178,51 @@ local function worker(user_args)
 
     local args = user_args or {}
 
+    local parent = args.parent or {}
     local mixer_cmd = args.mixer_cmd or 'pavucontrol'
     local widget_type = args.widget_type
-    local refresh_rate = args.refresh_rate or 1
+    local refresh_rate = args.refresh_rate or 2
     local step = args.step or 5
     local device = args.device or 'pulse'
 
-    if widget_types[widget_type] == nil then
-        volume.widget = widget_types['icon_and_text'].get_widget(args.icon_and_text_args)
-    else
-        volume.widget = widget_types[widget_type].get_widget(args)
+    function rebuild_widget(widget)
+        spawn.easy_async(LIST_DEVICES_CMD, function(stdout)
+
+            local sinks, sources = utils.extract_sinks_and_sources(stdout)
+
+            for i = 0, #rows do rows[i]=nil end
+
+            table.insert(rows, build_header_row("SINKS"))
+            table.insert(rows, build_rows(sinks, function() rebuild_widget(widget) end, "sink"))
+            table.insert(rows, build_header_row("SOURCES"))
+            table.insert(rows, build_rows(sources, function() rebuild_widget(widget) end, "source"))
+            table.insert(rows, build_header_row("VOLUME: " .. volume.value .. "%"))
+            table.insert(rows, build_slider(function(val) 
+              spawn(SET_VOLUME_CMD(device,val)) 
+              volume.value = val
+            end, volume.value))
+
+            widget:setup(rows)
+        end)
     end
 
-    local function update_graphic(widget, stdout)
-        local mute = string.match(stdout, "%[(o%D%D?)%]")   -- \[(o\D\D?)\] - [on] or [off]
-        if mute == 'off' then widget:mute()
-        elseif mute == 'on' then widget:unmute()
+    function rebuild_widget_callback(widget,stdout)
+        volume.value = string.match(stdout, "(%d?%d?%d)%%")
+        if parent.visible then
+          rebuild_widget(widget)
         end
-        local volume_level = string.match(stdout, "(%d?%d?%d)%%") -- (\d?\d?\d)\%)
-        volume_level = string.format("% 3d", volume_level)
-        widget:set_volume_level(volume_level)
     end
 
     function volume:inc(s)
-        spawn.easy_async(INC_VOLUME_CMD(device, s or step), function(stdout) update_graphic(volume.widget, stdout) end)
+        INC_VOLUME_CMD(device, s or step)
     end
 
     function volume:dec(s)
-        spawn.easy_async(DEC_VOLUME_CMD(device, s or step), function(stdout) update_graphic(volume.widget, stdout) end)
+        DEC_VOLUME_CMD(device, s or step)    
     end
 
     function volume:toggle()
-        spawn.easy_async(TOG_VOLUME_CMD(device), function(stdout) update_graphic(volume.widget, stdout) end)
+        TOG_VOLUME_CMD(device)
     end
 
     function volume:mixer()
@@ -202,25 +230,8 @@ local function worker(user_args)
             spawn.easy_async(mixer_cmd)
         end
     end
-
-    volume.widget:buttons(
-            awful.util.table.join(
-                    awful.button({}, 3, function()
-                        if popup.visible then
-                            popup.visible = not popup.visible
-                        else
-                            rebuild_popup()
-                            popup:move_next_to(mouse.current_widget_geometry)
-                        end
-                    end),
-                    awful.button({}, 4, function() volume:inc() end),
-                    awful.button({}, 5, function() volume:dec() end),
-                    awful.button({}, 2, function() volume:mixer() end),
-                    awful.button({}, 1, function() volume:toggle() end)
-            )
-    )
-
-    watch(GET_VOLUME_CMD(device), refresh_rate, update_graphic, volume.widget)
+    
+    watch(GET_VOLUME_CMD(device), refresh_rate, rebuild_widget_callback,volume.widget)
 
     return volume.widget
 end
