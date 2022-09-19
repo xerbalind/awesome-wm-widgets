@@ -161,48 +161,52 @@ local function worker(user_args)
             '&lang=' .. LANG)
 
     weather_widget = wibox.widget {
-        {
-            {
-                {
-                    {
-                        id = 'icon',
-                        resize = true,
-                        widget = wibox.widget.imagebox
-                    },
-                    valign = 'center',
-                    widget = wibox.container.place,
-                },
-                {
-                    id = 'txt',
-                    widget = wibox.widget.textbox
-                },
-                layout = wibox.layout.fixed.horizontal,
-            },
-            left = 4,
-            right = 4,
-            layout = wibox.container.margin
-        },
-        shape = function(cr, width, height)
-            gears.shape.rounded_rect(cr, width, height, 4)
-        end,
-        widget = wibox.container.background,
-        set_image = function(self, path)
-            self:get_children_by_id('icon')[1].image = path
-        end,
-        set_text = function(self, text)
-            self:get_children_by_id('txt')[1].text = text
-        end,
-        is_ok = function(self, is_ok)
-            if is_ok then
-                self:get_children_by_id('icon')[1]:set_opacity(1)
-                self:get_children_by_id('icon')[1]:emit_signal('widget:redraw_needed')
-            else
-                self:get_children_by_id('icon')[1]:set_opacity(0.2)
-                self:get_children_by_id('icon')[1]:emit_signal('widget:redraw_needed')
-            end
-        end
+      widget = wibox.container.background()
     }
 
+    --[[ weather_widget = wibox.widget { ]]
+    --[[     { ]]
+    --[[         { ]]
+    --[[             { ]]
+    --[[                 { ]]
+    --[[                     id = 'icon', ]]
+    --[[                     resize = true, ]]
+    --[[                     widget = wibox.widget.imagebox ]]
+    --[[                 }, ]]
+    --[[                 valign = 'center', ]]
+    --[[                 widget = wibox.container.place, ]]
+    --[[             }, ]]
+    --[[             { ]]
+    --[[                 id = 'txt', ]]
+    --[[                 widget = wibox.widget.textbox ]]
+    --[[             }, ]]
+    --[[             layout = wibox.layout.fixed.horizontal, ]]
+    --[[         }, ]]
+    --[[         left = 4, ]]
+    --[[         right = 4, ]]
+    --[[         layout = wibox.container.margin ]]
+    --[[     }, ]]
+    --[[     shape = function(cr, width, height) ]]
+    --[[         gears.shape.rounded_rect(cr, width, height, 4) ]]
+    --[[     end, ]]
+    --[[     widget = wibox.container.background, ]]
+    --[[     set_image = function(self, path) ]]
+    --[[         self:get_children_by_id('icon')[1].image = path ]]
+    --[[     end, ]]
+    --[[     set_text = function(self, text) ]]
+    --[[         self:get_children_by_id('txt')[1].text = text ]]
+    --[[     end, ]]
+    --[[     is_ok = function(self, is_ok) ]]
+    --[[         if is_ok then ]]
+    --[[             self:get_children_by_id('icon')[1]:set_opacity(1) ]]
+    --[[             self:get_children_by_id('icon')[1]:emit_signal('widget:redraw_needed') ]]
+    --[[         else ]]
+    --[[             self:get_children_by_id('icon')[1]:set_opacity(0.2) ]]
+    --[[             self:get_children_by_id('icon')[1]:emit_signal('widget:redraw_needed') ]]
+    --[[         end ]]
+    --[[     end ]]
+    --[[ } ]]
+    --[[]]
     local current_weather_widget = wibox.widget {
         {
             {
@@ -498,38 +502,38 @@ local function worker(user_args)
     }
 
     local function update_widget(widget, stdout, stderr)
-        if stderr ~= '' then
-            if not warning_shown then
-                if (stderr ~= 'curl: (52) Empty reply from server'
-                and stderr ~= 'curl: (28) Failed to connect to api.openweathermap.org port 443: Connection timed out'
-                and stderr:find('^curl: %(18%) transfer closed with %d+ bytes remaining to read$') ~= nil
-                ) then
-                    show_warning(stderr)
-                end
-                warning_shown = true
-                widget:is_ok(false)
-                tooltip:add_to_object(widget)
-
-                widget:connect_signal('mouse::enter', function() tooltip.text = stderr end)
-            end
-            return
-        end
+        --[[ if stderr ~= '' then ]]
+        --[[     if not warning_shown then ]]
+        --[[         if (stderr ~= 'curl: (52) Empty reply from server' ]]
+        --[[         and stderr ~= 'curl: (28) Failed to connect to api.openweathermap.org port 443: Connection timed out' ]]
+        --[[         and stderr:find('^curl: %(18%) transfer closed with %d+ bytes remaining to read$') ~= nil ]]
+        --[[         ) then ]]
+        --[[             show_warning(stderr) ]]
+        --[[         end ]]
+        --[[         warning_shown = true ]]
+        --[[         widget:is_ok(false) ]]
+        --[[         tooltip:add_to_object(widget) ]]
+        --[[]]
+        --[[         widget:connect_signal('mouse::enter', function() tooltip.text = stderr end) ]]
+        --[[     end ]]
+        --[[     return ]]
+        --[[ end ]]
 
         warning_shown = false
-        tooltip:remove_from_object(widget)
-        widget:is_ok(true)
+        --[[ tooltip:remove_from_object(widget) ]]
+        --[[ widget:is_ok(true) ]]
 
         local result = json.decode(stdout)
 
-        widget:set_image(ICONS_DIR .. icon_map[result.current.weather[1].icon] .. icons_extension)
-        widget:set_text(gen_temperature_str(result.current.temp, '%.0f', both_units_widget, units))
+        --[[ widget:set_image(ICONS_DIR .. icon_map[result.current.weather[1].icon] .. icons_extension) ]]
+        --[[ widget:set_text(gen_temperature_str(result.current.temp, '%.0f', both_units_widget, units)) ]]
 
         current_weather_widget:update(result.current)
 
         local final_widget = {
             current_weather_widget,
             spacing = 16,
-            layout = wibox.layout.fixed.vertical
+            layout = wibox.layout.fixed.vertical,
         }
 
         if show_hourly_forecast then
@@ -542,26 +546,27 @@ local function worker(user_args)
             table.insert(final_widget, daily_forecast_widget)
         end
 
-        weather_popup:setup({
+        --[[ weather_widget:set_widget(current_weather_widget) ]]
+        weather_widget:setup({
             {
                 final_widget,
                 margins = 10,
                 widget = wibox.container.margin
             },
             bg = beautiful.bg_normal,
-            widget = wibox.container.background
+            widget = wibox.container.background,
         })
     end
 
-    weather_widget:buttons(gears.table.join(awful.button({}, 1, function()
-            if weather_popup.visible then
-                weather_widget:set_bg('#00000000')
-                weather_popup.visible = not weather_popup.visible
-            else
-                weather_widget:set_bg(beautiful.bg_focus)
-                weather_popup:move_next_to(mouse.current_widget_geometry)
-            end
-        end)))
+    --[[ weather_widget:buttons(gears.table.join(awful.button({}, 1, function() ]]
+    --[[         if weather_popup.visible then ]]
+    --[[             weather_widget:set_bg('#00000000') ]]
+    --[[             weather_popup.visible = not weather_popup.visible ]]
+    --[[         else ]]
+    --[[             weather_widget:set_bg(beautiful.bg_focus) ]]
+    --[[             weather_popup:move_next_to(mouse.current_widget_geometry) ]]
+    --[[         end ]]
+    --[[     end))) ]]
 
     watch(
         string.format(GET_FORECAST_CMD, owm_one_cal_api),
