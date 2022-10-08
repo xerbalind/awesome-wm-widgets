@@ -10,6 +10,7 @@
 
 local awful = require("awful")
 local naughty = require("naughty")
+local gears = require("gears")
 local watch = require("awful.widget.watch")
 local wibox = require("wibox")
 local gfs = require("gears.filesystem")
@@ -26,33 +27,32 @@ local battery_widget = {}
 local function worker(user_args)
     local args = user_args or {}
 
+    local parent = args.parent or {}
+    local timeout = args.timeout or 5
     local font = args.font or 'Play 8'
     local path_to_icons = args.path_to_icons or "/usr/share/icons/Arc/status/symbolic/"
-    local show_current_level = args.show_current_level or false
     local margin_left = args.margin_left or 0
     local margin_right = args.margin_right or 0
+    local margin_top = args.margin_top or 0
+    local margin_bottom = args.margin_bottom or 0
 
     local display_notification = args.display_notification or false
     local display_notification_onClick = args.display_notification_onClick or true
     local position = args.notification_position or "top_right"
-    local timeout = args.timeout or 10
 
     local warning_msg_title = args.warning_msg_title or 'Huston, we have a problem'
     local warning_msg_text = args.warning_msg_text or 'Battery is dying'
     local warning_msg_position = args.warning_msg_position or 'bottom_right'
     local warning_msg_icon = args.warning_msg_icon or WIDGET_DIR .. '/spaceman.jpg'
-    local enable_battery_warning = args.enable_battery_warning
-    if enable_battery_warning == nil then
-        enable_battery_warning = true
-    end
+    local enable_battery_warning = args.enable_battery_warning or true
 
-    if not gfs.dir_readable(path_to_icons) then
-        naughty.notify{
-            title = "Battery Widget",
-            text = "Folder with icons doesn't exist: " .. path_to_icons,
-            preset = naughty.config.presets.critical
-        }
-    end
+    --[[ if not gfs.dir_readable(path_to_icons) then ]]
+    --[[     naughty.notify{ ]]
+    --[[         title = "Battery Widget", ]]
+    --[[         text = "Folder with icons doesn't exist: " .. path_to_icons, ]]
+    --[[         preset = naughty.config.presets.critical ]]
+    --[[     } ]]
+    --[[ end ]]
 
     local icon_widget = wibox.widget {
         {
@@ -63,36 +63,48 @@ local function worker(user_args)
         valign = 'center',
         layout = wibox.container.place,
     }
-    local level_widget = wibox.widget {
+    local title_widget = wibox.widget {
         font = font,
-        widget = wibox.widget.textbox
+        markup = '<b>Battery Status</b>',
+        widget = wibox.widget.textbox,
+        align = "center"
+    }
+
+    local status_widget = wibox.widget {
+      font = font,
+      align = "center",
+      widget = wibox.widget.textbox,
     }
 
     battery_widget = wibox.widget {
-        icon_widget,
-        level_widget,
-        layout = wibox.layout.fixed.horizontal,
+        title_widget,
+        status_widget,
+        forced_width = 100,
+        layout = wibox.layout.fixed.vertical,
     }
-    -- Popup with battery info
-    -- One way of creating a pop-up notification - naughty.notify
-    local notification
-    local function show_battery_status(batteryType)
+
+    local widget_timer = gears.timer {
+        timeout = timeout
+    }
+
+    parent:connect_signal("show",
+      function() 
+        widget_timer:start() 
+        widget_timer:emit_signal("timeout")
+    end)
+
+    parent:connect_signal("hide",
+      function()
+        widget_timer:stop()
+    end)
+
+    widget_timer:connect_signal('timeout',function()
         awful.spawn.easy_async([[bash -c 'acpi']],
-        function(stdout, _, _, _)
-            naughty.destroy(notification)
-            notification = naughty.notify{
-                text =  stdout,
-                title = "Battery status",
-                icon = path_to_icons .. batteryType .. ".svg",
-                icon_size = dpi(16),
-                position = position,
-                timeout = 5, hover_timeout = 0.5,
-                width = 200,
-                screen = mouse.screen
-            }
-        end
+          function(stdout, _, _, _)
+            status_widget.text = stdout
+          end
         )
-    end
+    end)
 
     -- Alternative to naughty.notify - tooltip. You can compare both and choose the preferred one
     --battery_popup = awful.tooltip({objects = {battery_widget}})
@@ -105,7 +117,7 @@ local function worker(user_args)
     local function show_battery_warning()
         naughty.notify {
             icon = warning_msg_icon,
-            icon_size = 100,
+            icon_size = 200,
             text = warning_msg_text,
             title = warning_msg_title,
             timeout = 25, -- show the warning for a longer time
@@ -113,12 +125,11 @@ local function worker(user_args)
             position = warning_msg_position,
             bg = "#F06060",
             fg = "#EEE9EF",
-            width = 300,
+            width = 400,
             screen = mouse.screen
         }
     end
     local last_battery_check = os.time()
-    local batteryType = "battery-good-symbolic"
 
     watch("acpi -i", timeout,
     function(widget, stdout)
@@ -153,48 +164,35 @@ local function worker(user_args)
         end
         charge = charge / capacity
 
-        if show_current_level then
-            level_widget.text = string.format('%d%%', charge)
-        end
-
-        if (charge >= 1 and charge < 15) then
-            batteryType = "battery-empty%s-symbolic"
-            if enable_battery_warning and status ~= 'Charging' and os.difftime(os.time(), last_battery_check) > 300 then
+        if (charge >= 1 and charge < 20) then
+            --[[ batteryType = "battery-empty%s-symbolic" ]]
+            if enable_battery_warning and status ~= 'Charging' and os.difftime(os.time(), last_battery_check) > 100 then
                 -- if 5 minutes have elapsed since the last warning
                 last_battery_check = os.time()
 
                 show_battery_warning()
             end
-        elseif (charge >= 15 and charge < 40) then batteryType = "battery-caution%s-symbolic"
-        elseif (charge >= 40 and charge < 60) then batteryType = "battery-low%s-symbolic"
-        elseif (charge >= 60 and charge < 80) then batteryType = "battery-good%s-symbolic"
-        elseif (charge >= 80 and charge <= 100) then batteryType = "battery-full%s-symbolic"
+        --[[ elseif (charge >= 15 and charge < 40) then batteryType = "battery-caution%s-symbolic" ]]
+        --[[ elseif (charge >= 40 and charge < 60) then batteryType = "battery-low%s-symbolic" ]]
+        --[[ elseif (charge >= 60 and charge < 80) then batteryType = "battery-good%s-symbolic" ]]
+        --[[ elseif (charge >= 80 and charge <= 100) then batteryType = "battery-full%s-symbolic" ]]
         end
 
-        if status == 'Charging' then
-            batteryType = string.format(batteryType, '-charging')
-        else
-            batteryType = string.format(batteryType, '')
-        end
+        --[[ if status == 'Charging' then ]]
+        --[[     batteryType = string.format(batteryType, '-charging') ]]
+        --[[ else ]]
+        --[[     batteryType = string.format(batteryType, '') ]]
+        --[[ end ]]
 
-        widget.icon:set_image(path_to_icons .. batteryType .. ".svg")
+        --[[ widget.icon:set_image(path_to_icons .. batteryType .. ".svg") ]]
 
         -- Update popup text
         -- battery_popup.text = string.gsub(stdout, "\n$", "")
     end,
-    icon_widget)
+    _)
 
-    if display_notification then
-        battery_widget:connect_signal("mouse::enter", function() show_battery_status(batteryType) end)
-        battery_widget:connect_signal("mouse::leave", function() naughty.destroy(notification) end)
-    elseif display_notification_onClick then
-        battery_widget:connect_signal("button::press", function(_,_,_,button)
-            if (button == 3) then show_battery_status(batteryType) end
-        end)
-        battery_widget:connect_signal("mouse::leave", function() naughty.destroy(notification) end)
-    end
 
-    return wibox.container.margin(battery_widget, margin_left, margin_right)
+    return wibox.container.margin(battery_widget, margin_left, margin_right, margin_top, margin_bottom)
 end
 
 return setmetatable(battery_widget, { __call = function(_, ...) return worker(...) end })
